@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Logo } from "./logo";
+import { ApiKeyButton } from "./api-key-settings";
 
 const NAV = [
   { href: "/#features", label: "功能" },
@@ -20,13 +21,16 @@ export function SiteHeader() {
             </Link>
           ))}
         </nav>
-        <Link
-          href="/interview"
-          className="group inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2 text-sm font-medium text-on-ink transition-colors hover:bg-accent"
-        >
-          開始練習
-          <span className="transition-transform group-hover:translate-x-0.5">→</span>
-        </Link>
+        <div className="flex items-center gap-2">
+          <ApiKeyButton />
+          <Link
+            href="/interview"
+            className="group inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2 text-sm font-medium text-on-ink transition-colors hover:bg-accent"
+          >
+            開始練習
+            <span className="transition-transform group-hover:translate-x-0.5">→</span>
+          </Link>
+        </div>
       </div>
     </header>
   );

@@ -39,7 +39,7 @@ const FEATURES = [
 ];
 
 const STEPS = [
-  { title: "貼上職缺描述", body: "從求職網站複製 JD，選擇想練習的題數。" },
+  { title: "設定金鑰、貼上職缺", body: "輸入你的 OpenAI API 金鑰（只存在你的瀏覽器），再從求職網站複製 JD、選擇題數。" },
   { title: "與 AI 面試官對話", body: "一次一題，認真作答；面試官會回應並追問或出下一題。" },
   { title: "拿到評分報告", body: "總分、逐題回饋、優缺點與每題的示範回答，一頁看完。" },
 ];
@@ -47,7 +47,11 @@ const STEPS = [
 const FAQS = [
   {
     q: "需要註冊或付費嗎？",
-    a: "不需要。打開練習頁、貼上職缺描述，就可以直接開始。",
+    a: "不需要註冊，也不用付費給我們。AI 面試室採用 BYOK（自備金鑰）模式，使用你自己的 OpenAI API 金鑰，模型費用直接計入你的 OpenAI 帳戶；一場面試通常只花費很少的額度。",
+  },
+  {
+    q: "我的 API 金鑰安全嗎？",
+    a: "金鑰只儲存在你瀏覽器的 localStorage。出題或評分時，金鑰會經由我們的伺服器轉送給 OpenAI，但伺服器不會保存或記錄。建議在 OpenAI 後台為金鑰設定用量上限，在共用電腦上使用後記得移除。",
   },
   {
     q: "我的回答會被保存嗎？",
@@ -99,14 +103,14 @@ export default function Home() {
                 href="/interview"
                 className="group inline-flex items-center gap-2 rounded-full bg-accent px-7 py-3.5 font-medium text-white shadow-[0_8px_24px_-8px_var(--accent)] transition-transform hover:-translate-y-0.5"
               >
-                免費開始模擬面試
+                開始模擬面試
                 <span className="transition-transform group-hover:translate-x-1">→</span>
               </Link>
               <Link href="#how" className="rounded-full px-5 py-3.5 font-medium text-ink underline-offset-4 hover:underline">
                 看看怎麼運作
               </Link>
             </div>
-            <p className="mt-6 font-mono text-xs text-muted">免註冊 · 不保存對話 · 約 5 分鐘完成</p>
+            <p className="mt-6 font-mono text-xs text-muted">免註冊 · 自備 OpenAI 金鑰 · 不保存對話</p>
           </div>
 
           <HeroPreview />

@@ -8,12 +8,17 @@
  * 伺服器再依照「候選人已經回答了幾題」決定這次要做什麼：
  *   - 還沒答完 → 請 AI 出下一題（回傳 type: "question"）
  *   - 全部答完 → 請 AI 評分並給建議（回傳 type: "evaluation"）
+ *
+ * BYOK（Bring Your Own Key）：
+ * 伺服器不使用自己的 OpenAI 金鑰，而是由使用者在前端設定自己的金鑰，
+ * 每次請求放在 x-openai-api-key header 帶過來。金鑰只用於這次請求，不保存、不記錄。
  */
 
 // OpenAI 官方 SDK，用來呼叫 Chat Completions API
 import OpenAI from "openai";
 // 前後端共用的常數與型別（定義在 src/lib/interview.ts）
 import {
+  API_KEY_HEADER, // 放使用者金鑰的 header 名稱
   MAX_QUESTIONS, // 題數上限（10）
   MIN_QUESTIONS, // 題數下限（1）
   type ChatMessage, // 單則對話：{ role: "interviewer" | "candidate", content }
@@ -95,9 +100,14 @@ function isValidRequest(body: unknown): body is InterviewRequest {
  * 在 App Router 中，route.ts 匯出名為 POST 的函式，就代表這個路徑接受 POST 請求。
  */
 export async function POST(request: Request) {
-  // ── 步驟 1：確認伺服器有設定 API 金鑰（來自 .env.local） ──
-  if (!process.env.OPENAI_API_KEY) {
-    return Response.json({ error: "伺服器未設定 OPENAI_API_KEY" }, { status: 500 });
+  // ── 步驟 1：從 header 取出使用者自己的 OpenAI 金鑰（BYOK） ──
+  // 刻意不讀 process.env.OPENAI_API_KEY：沒帶金鑰就直接拒絕，不會用到伺服器的額度
+  const apiKey = request.headers.get(API_KEY_HEADER)?.trim();
+  if (!apiKey) {
+    return Response.json(
+      { error: "請先在「API 金鑰」設定中輸入你的 OpenAI API 金鑰", code: "missing_api_key" },
+      { status: 401 },
+    );
   }
 
   // ── 步驟 2：解析請求的 JSON 內容 ──
@@ -130,8 +140,8 @@ export async function POST(request: Request) {
   }
 
   // ── 步驟 5：準備要送給 OpenAI 的訊息 ──
-  // new OpenAI() 不帶參數時，會自動讀取環境變數 OPENAI_API_KEY
-  const client = new OpenAI();
+  // 明確傳入使用者的金鑰；有傳 apiKey 時，SDK 不會再去讀環境變數
+  const client = new OpenAI({ apiKey });
   // 訊息順序：先放 system prompt（設定角色），再接上完整的對話紀錄
   const messages = [
     { role: "system" as const, content: systemPrompt(jobDescription, totalQuestions) },
@@ -205,8 +215,35 @@ exampleAnswer 必須是一段 150-250 字、以第一人稱撰寫的完整示範
   } catch (err) {
     // ── 錯誤處理 ──
     // 呼叫 OpenAI 失敗（網路問題、金鑰錯誤、額度用完…）或 JSON 解析失敗都會到這裡。
-    // 詳細錯誤只印在伺服器 log，不直接回傳給前端，避免洩漏內部資訊
-    console.error("[api/interview]", err);
+    if (err instanceof OpenAI.APIError) {
+      // 只記錄狀態碼與錯誤代碼。OpenAI 的錯誤訊息（err.message）會帶出金鑰頭尾片段，
+      // 整個錯誤物件也可能包含請求資訊，所以兩者都不印，避免使用者的金鑰出現在 log
+      console.error("[api/interview] OpenAI error", err.status, err.code ?? err.type ?? "unknown");
+
+      // 金鑰錯誤或已撤銷：回 401，讓前端提示使用者重新設定
+      if (err.status === 401) {
+        return Response.json(
+          { error: "OpenAI API 金鑰無效，請確認後重新設定", code: "invalid_api_key" },
+          { status: 401 },
+        );
+      }
+      // 額度用完或請求太頻繁
+      if (err.status === 429) {
+        return Response.json(
+          { error: "你的 OpenAI 帳戶額度不足或請求過於頻繁，請檢查帳戶的用量與付款設定", code: "rate_limited" },
+          { status: 429 },
+        );
+      }
+      // 金鑰沒有這個模型的使用權限
+      if (err.status === 403 || err.status === 404) {
+        return Response.json(
+          { error: `你的 OpenAI 金鑰無法使用模型 ${MODEL}，請確認專案權限`, code: "model_unavailable" },
+          { status: 403 },
+        );
+      }
+    } else {
+      console.error("[api/interview]", err);
+    }
     // 502 Bad Gateway：代表「我們依賴的外部服務出問題」
     return Response.json({ error: "AI 服務暫時無法使用，請稍後再試" }, { status: 502 });
   }

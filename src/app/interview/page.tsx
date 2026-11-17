@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { getApiKey, maskApiKey, openApiKeySettings, useApiKey } from "@/lib/api-key";
 import {
+  API_KEY_HEADER,
   DEFAULT_QUESTIONS,
   MAX_QUESTIONS,
   MIN_QUESTIONS,
@@ -39,22 +41,35 @@ export default function InterviewPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
+  const apiKey = useApiKey();
 
   useEffect(() => {
     if (stage !== "setup") bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [history, loading, stage]);
 
   async function callInterview(nextHistory: ChatMessage[]) {
+    // BYOK：每次呼叫都從 localStorage 讀取最新的金鑰
+    const key = getApiKey();
+    if (!key) {
+      setError("請先設定你的 OpenAI API 金鑰");
+      openApiKeySettings();
+      return false;
+    }
+
     setLoading(true);
     setError("");
     try {
       const res = await fetch("/api/interview", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", [API_KEY_HEADER]: key },
         body: JSON.stringify({ jobDescription, totalQuestions, history: nextHistory }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "發生錯誤");
+      if (!res.ok) {
+        // 金鑰缺少或無效：直接打開設定視窗讓使用者更換
+        if (res.status === 401) openApiKeySettings();
+        throw new Error(data.error ?? "發生錯誤");
+      }
 
       const result = data as InterviewResponse;
       if (result.type === "question") {
@@ -126,6 +141,7 @@ export default function InterviewPage() {
             setJobDescription={setJobDescription}
             totalQuestions={totalQuestions}
             setTotalQuestions={setTotalQuestions}
+            apiKey={apiKey}
             loading={loading}
             onStart={startInterview}
           />
@@ -220,6 +236,7 @@ function SetupView({
   setJobDescription,
   totalQuestions,
   setTotalQuestions,
+  apiKey,
   loading,
   onStart,
 }: {
@@ -227,6 +244,7 @@ function SetupView({
   setJobDescription: (v: string) => void;
   totalQuestions: number;
   setTotalQuestions: (n: number) => void;
+  apiKey: string | null;
   loading: boolean;
   onStart: () => void;
 }) {
@@ -314,9 +332,38 @@ function SetupView({
           </div>
         </div>
 
+        {/* BYOK 金鑰狀態 */}
+        <div
+          className={`mt-6 flex items-center justify-between gap-4 rounded-2xl border px-4 py-3 text-sm ${
+            apiKey === "" ? "border-accent/40 bg-accent-soft" : "border-line bg-paper"
+          }`}
+        >
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span
+              className={`size-2 shrink-0 rounded-full ${apiKey === null ? "bg-line" : apiKey ? "bg-emerald-500" : "bg-accent"}`}
+            />
+            {apiKey === null ? (
+              <span className="text-muted">讀取金鑰設定中…</span>
+            ) : apiKey ? (
+              <span className="truncate">
+                使用你的 OpenAI 金鑰 <span className="font-mono text-muted">{maskApiKey(apiKey)}</span>
+              </span>
+            ) : (
+              <span>需要你自己的 OpenAI API 金鑰才能開始</span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={openApiKeySettings}
+            className="shrink-0 font-medium text-accent underline-offset-2 hover:underline"
+          >
+            {apiKey ? "更換" : "設定金鑰"}
+          </button>
+        </div>
+
         <button
           onClick={onStart}
-          disabled={!jobDescription.trim() || loading}
+          disabled={!jobDescription.trim() || !apiKey || loading}
           className="group mt-8 flex w-full items-center justify-center gap-2 rounded-full bg-accent px-6 py-4 font-medium text-white shadow-[0_10px_30px_-10px_var(--accent)] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none disabled:hover:translate-y-0"
         >
           {loading ? "面試官準備中…" : "進入面試室"}
